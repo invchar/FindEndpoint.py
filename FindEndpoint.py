@@ -17,8 +17,8 @@ swlist = [raw_input('Start switch (typically stp root): ')] #Discovered switches
 swnum = 0 #Incremented as switches in the list are checked to move on to next switch
 usernm = raw_input('Username (needs to have access on all switches): ')
 userpw = getpass.getpass('User password: ')
-enablepw = getpass.getpass('Enable password: ') #Needed to get cdp neighbor detail
-targetmac = raw_input('Target MAC: ')
+#enablepw = getpass.getpass('Enable password: ') #Needed to get cdp neighbor detail
+targetmac = raw_input('Target MAC (xxxx.xxxx.xxxx): ')
 hit = '0'
 
 
@@ -42,7 +42,7 @@ def initlogin():
 	global userpw
 	while x < 2:
 		swsess.sendline(userpw)
-		i = swsess.expect(['>', 'Password:'])
+		i = swsess.expect(['#', 'Password:'])
 		if i == 0:
 			return
 		elif i == 1:
@@ -168,7 +168,7 @@ def checksw(ipaddy):
 	#Check if switch key fingerprint is known host, if not, ask if acceptable
 	i = swsess.expect(['\?', 'Password:'])
 	if i == 0:
-		print swsess.before
+		print(swsess.before)
 		answer = raw_input('Answer: ')
 		if answer == 'yes':
 			swsess.sendline('yes')
@@ -181,7 +181,7 @@ def checksw(ipaddy):
 	initlogin()
 	
 	#Elevate to privileged exec (necessary for some show commands)
-	privexec()
+	#privexec() #doesn't appear needed after all - at least in our env
 	
 	#Set term length to zero to eliminate 'more' prompts
 	termlen('off')
