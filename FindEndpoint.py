@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #imports
 import string
 import pexpect
@@ -13,12 +15,12 @@ global swnum
 global hit
 
 #Get input for switch connections
-swlist = [raw_input('Start switch (typically stp root): ')] #Discovered switches will be added to this list as necessary
+swlist = [input('Start switch (typically stp root): ')] #Discovered switches will be added to this list as necessary
 swnum = 0 #Incremented as switches in the list are checked to move on to next switch
-usernm = raw_input('Username (needs to have access on all switches): ')
+usernm = input('Username (needs to have access on all switches): ')
 userpw = getpass.getpass('User password: ')
 #enablepw = getpass.getpass('Enable password: ') #Needed to get cdp neighbor detail
-targetmac = raw_input('Target MAC (xxxx.xxxx.xxxx): ')
+targetmac = input('Target MAC (xxxx.xxxx.xxxx): ')
 hit = '0'
 
 
@@ -78,7 +80,7 @@ def checkmactable():
 	swsess.expect('#')
 
 	#Split up the show command output and get just useful lines
-	showmacdata = string.split(swsess.before, '\n') #Split on new lines
+	showmacdata = str.split(swsess.before.decode(encoding='UTF-8'), '\n') #Split on new lines
 	i = 0
 	for line in showmacdata:
 		showmacdata[i] = line.split() #Split lines on whitespace
@@ -111,7 +113,7 @@ def ismacontrunk():
 	global swsess
 	swsess.sendline('show interfaces trunk')
 	swsess.expect('#')
-	if hit[3] in swsess.before: #If the interface shows in show interfaces trunk, it is a trunk
+	if hit[3] in swsess.before.decode(encoding='UTF-8'): #If the interface shows in show interfaces trunk, it is a trunk
 		print(hit[3] + ' is a trunk')
 		return 1 #Return true
 	else:
@@ -123,7 +125,7 @@ def checkcdpinfo(toget):
 		switches = []
 		swsess.sendline('show cdp neighbors detail')
 		swsess.expect('#')
-		cdpinfo = string.split(swsess.before, '\n') #Split on new lines
+		cdpinfo = str.split(swsess.before.decode(encoding='UTF-8'), '\n') #Split on new lines
 		i = 0
 		for line in cdpinfo:
 			cdpinfo[i] = line.split() #Split lines on whitespace
@@ -140,7 +142,7 @@ def checkcdpinfo(toget):
 		swsess.sendline('show cdp neighbors detail')
 		swsess.expect('#')
 		#Split up the show command output and get just useful lines
-		cdpinfo = string.split(swsess.before, '\n') #Split on new lines
+		cdpinfo = str.split(swsess.before.decode(encoding='UTF-8'), '\n') #Split on new lines
 		i = 0
 		for line in cdpinfo:
 			cdpinfo[i] = line.split() #Split lines on whitespace
@@ -168,8 +170,8 @@ def checksw(ipaddy):
 	#Check if switch key fingerprint is known host, if not, ask if acceptable
 	i = swsess.expect(['\?', 'Password:'])
 	if i == 0:
-		print(swsess.before)
-		answer = raw_input('Answer: ')
+		print(swsess.before.decode(encoding='UTF-8'))
+		answer = input('Answer: ')
 		if answer == 'yes':
 			swsess.sendline('yes')
 			swsess.expect('Password:')
