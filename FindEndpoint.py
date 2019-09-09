@@ -46,12 +46,12 @@ def initlogin():
 		swsess.sendline(userpw)
 		i = swsess.expect(['#', 'Password:'])
 		if i == 0:
-			return
+			return 0
 		elif i == 1:
 			userpw = getpass.getpass('Wrong user password, try again: ')
 			x = x + 1 
-	print('Too many failed attempts.')
-	quit()
+	print('Too many failed attempts, skipping this switch')
+	return 1
 	
 ### Define privexec (elevate to privileged exec on switch)
 def privexec():
@@ -133,9 +133,10 @@ def checkcdpinfo(toget):
 		#Find IPs of neighbor switches
 		i = len(cdpinfo) - 1
 		while i >= 0: #Start at end of list and work backward so lines being removed don't mess up loop counter
-			if len(cdpinfo[i]) >= 1: #If it is a line with at least one word
-				if cdpinfo[i][0] == 'Management': #If we get to a Management IPs section
-					switches.append(cdpinfo[i + 1][2]) #Add the IP to the list of IPs to return
+			if len(cdpinfo[i]) >= 2: #If it is a line with at least two words
+				if cdpinfo[i][0] == 'Management' and cdpinfo[i][1] == 'address(es):': #If we get to a Management IPs section
+					if len(cdpinfo[i + 1]) >= 2:
+						switches.append(cdpinfo[i + 1][2]) #Add the IP to the list of IPs to return
 			i = i - 1 #Count down loop counter
 		return switches
 	else:
@@ -180,7 +181,10 @@ def checksw(ipaddy):
 			quit()
 
 	#Initial switch login
-	initlogin()
+	f = initlogin()
+	if f:
+		swnum = swnum + 1
+		return
 	
 	#Elevate to privileged exec (necessary for some show commands)
 	#privexec() #doesn't appear needed after all - at least in our env
