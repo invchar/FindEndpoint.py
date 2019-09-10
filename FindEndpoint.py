@@ -42,14 +42,21 @@ def initlogin():
 	x = 0
 	global swsess
 	global userpw
+	global swnum
+	global swlist
+	global usernm
 	while x < 2:
 		swsess.sendline(userpw)
 		i = swsess.expect(['#', 'Password:'])
 		if i == 0:
 			return 0
 		elif i == 1:
-			userpw = getpass.getpass('Wrong user password, try again: ')
-			x = x + 1 
+			a = input('Wrong credentials on switch ' + swlist[swnum] + ' using username ' + usernm +  ', [try] again or [skip]?')
+			if a == 'try':
+				userpw = getpass.getpass('Wrong credentials on switch ' + swlist[swnum] + ' using username ' + usernm +  ', try again: ')
+				x = x + 1 
+			else:
+				return 1
 	print('Too many failed attempts, skipping this switch')
 	return 1
 	
@@ -113,7 +120,7 @@ def ismacontrunk():
 	global swsess
 	swsess.sendline('show interfaces trunk')
 	swsess.expect('#')
-	if hit[3] in swsess.before.decode(encoding='UTF-8'): #If the interface shows in show interfaces trunk, it is a trunk
+	if hit[3] in str.split(swsess.before.decode(encoding='UTF-8')): #If the interface shows in show interfaces trunk, it is a trunk. string split is necessary
 		print(hit[3] + ' is a trunk')
 		return 1 #Return true
 	else:
@@ -125,10 +132,22 @@ def checkcdpinfo(toget):
 		switches = []
 		swsess.sendline('show cdp neighbors detail')
 		swsess.expect('#')
-		cdpinfo = str.split(swsess.before.decode(encoding='UTF-8'), '\n') #Split on new lines
+		#First split on cdp output divider (-------------------------)
+		cdpinfo = str.split(swsess.before.decode(encoding='UTF-8'), '-------------------------')
+		#Next keep only lines (entries between dividers) which are for a switch (WS-)
+		i = len(cdpinfo) - 1
+		while i >= 0:
+			if 'WS-' not in cdpinfo[i]:
+				cdpinfo.pop(i)
+			i = i - 1
+		#split on newline instead of output divider
+		cdpinfo = str.split("".join(cdpinfo), '\n')
+
+		#Split lines on whitespace
 		i = 0
+		x = 0
 		for line in cdpinfo:
-			cdpinfo[i] = line.split() #Split lines on whitespace
+			cdpinfo[i] = line.split() 
 			i = i + 1 #Increment for index
 		#Find IPs of neighbor switches
 		i = len(cdpinfo) - 1
@@ -142,12 +161,22 @@ def checkcdpinfo(toget):
 	else:
 		swsess.sendline('show cdp neighbors detail')
 		swsess.expect('#')
-		#Split up the show command output and get just useful lines
-		cdpinfo = str.split(swsess.before.decode(encoding='UTF-8'), '\n') #Split on new lines
+		#First split on cdp output divider (-------------------------)
+		cdpinfo = str.split(swsess.before.decode(encoding='UTF-8'), '-------------------------')
+		#Next keep only lines (entries between dividers) which are for a switch (WS-)
+		i = len(cdpinfo) - 1
+		while i >= 0:
+			if 'WS-' not in cdpinfo[i]:
+				cdpinfo.pop(i)
+			i = i - 1
+		#split on newline instead of output divider
+		cdpinfo = str.split("".join(cdpinfo), '\n')
+
+		#Split lines on whitespace
 		i = 0
 		for line in cdpinfo:
-			cdpinfo[i] = line.split() #Split lines on whitespace
-			i = i + 1 #Increment for index
+			cdpinfo[i] = line.split() 
+			i = i + 1
 		#Find IP of switch at other end of trunk
 		i = len(cdpinfo) - 1
 		while i >= 0: #Start at end of list and work backward so lines being removed don't mess up loop counter
@@ -155,6 +184,8 @@ def checkcdpinfo(toget):
 				if cdpinfo[i][1] == toget.replace('Gi','GigabitEthernet') + ',': #If the line matches the interface we're looking for
 					return cdpinfo[i - 2][2] #Return the IP to be appended to the switch list
 			i = i - 1 #Count down loop counter
+		print('Unable to find next switch via cdp info, switch connected to port ' + toget)
+		quit()
 
 ### Define check sw (runs through the checks for a switch, calling above functions as necessary to get info)
 def checksw(ipaddy):
@@ -166,19 +197,30 @@ def checksw(ipaddy):
 	otherswitches = []
 	
 	#Spawn ssh session
+	print('Connecting to ' + usernm + '@' + ipaddy)
 	swsess = pexpect.spawn('ssh ' + usernm + '@' + ipaddy)
 	
 	#Check if switch key fingerprint is known host, if not, ask if acceptable
-	i = swsess.expect(['\?', 'Password:'])
-	if i == 0:
-		print(swsess.before.decode(encoding='UTF-8'))
-		answer = input('Answer: ')
-		if answer == 'yes':
-			swsess.sendline('yes')
-			swsess.expect('Password:')
-		else:
-			print('Not accepting fingerprint. Quitting.')
-			quit()
+	try:	
+		i = swsess.expect(['\?', 'Password:'])
+		if i == 0:
+			print(swsess.before.decode(encoding='UTF-8'))
+			answer = input('Answer: ')
+			if answer == 'yes':
+				swsess.sendline('yes')
+				swsess.expect('Password:')
+			else:
+				print('Not accepting fingerprint, skipping switch ' + ipaddy)
+				swnum = swnum + 1
+				return
+	except pexpect.TIMEOUT:
+		print('Timeout reaching ' + ipaddy)
+		swnum = swnum + 1
+		return
+	except:
+		print('Some exception has occurred, moving to next switch...')
+		swnum = swnum + 1
+		return
 
 	#Initial switch login
 	f = initlogin()
@@ -198,11 +240,14 @@ def checksw(ipaddy):
 	if hit != '0': #if there was a hit (MAC found in address table)
 		if ismacontrunk(): #If the MAC is on a trunk we need to follow the trail to the next switch
 			nextsw = checkcdpinfo(hit[3]) #Get IP of next switch from cdp info
-			if nextsw not in swlist: #If the next switch isn't already in the switch list, otherwise we could loop around
-				swlist.insert(swnum + 1, nextsw) #Insert switch to be next in line to check
-			else: #If it IS in swlist, see if it has already been checked, and if not, bump it up in the list to be next
-				if swlist.index(nextsw) > swnum:
-					swlist.insert(swnum + 1, swlist.pop(nextsw))
+			if nextsw:
+				if nextsw not in swlist: #If the next switch isn't already in the switch list, otherwise we could loop around
+					print('Adding ' + nextsw + ' to switch list')
+					swlist.insert(swnum + 1, nextsw) #Insert switch to be next in line to check
+				else: #If it IS in swlist, see if it has already been checked, and if not, bump it up in the list to be next
+					print('Switch ' + nextsw + ' already in list, moving to top')
+					if swlist.index(nextsw) > swnum:
+						swlist.insert(swnum + 1, swlist.pop(nextsw))
 		else: #If the MAC is on an access port, we have found what we wanted
 			print('Target MAC ' + targetmac + ' found on access port ' + hit[3] + ' on switch at ' + ipaddy)
 			if othermacs: #If other macs were found on the same port, let's list them out
@@ -210,6 +255,7 @@ def checksw(ipaddy):
 				print(othermacs)
 			quit()
 	else: #If no hit, get IPs of all neighboring switches and add them to the switch list
+		print('Target MAC not found on ' + ipaddy)
 		otherswitches = checkcdpinfo('all')
 		for switch in otherswitches:
 			if switch not in swlist: #If the next switch isn't already in the switch list (otherwise we could loop around forever)
